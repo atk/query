@@ -9,8 +9,9 @@ import {
   createResource,
   on,
   batch,
+  type Signal,
 } from 'solid-js'
-import { createStore, unwrap } from 'solid-js/store'
+import { createStore, reconcile, unwrap } from 'solid-js/store'
 import { shouldThrowError } from './utils'
 
 // Base Query Function that is used to create the query.
@@ -41,6 +42,23 @@ export function createBaseQuery<
     observer.getOptimisticResult(defaultedOptions),
   )
 
+  // allowing fine-grained reactivity for resources:
+  // https://www.solidjs.com/docs/latest/api#:~:text=Resources%20can%20be%20set%20with%20custom%20defined%20storage
+  function createDeepSignal<T extends TData | undefined>(value: T): Signal<T> {
+    const [store, setStore] = createStore({
+      value,
+    })
+    return [
+      () => store.value,
+      (update: T) => {
+        const unwrapped = unwrap(store.value)
+        typeof update === 'function' && (update = update(unwrapped))
+        setStore('value', reconcile(update))
+        return store.value
+      },
+    ] as Signal<T>
+  }
+
   const [dataResource, { refetch, mutate }] = createResource<TData | undefined>(
     () => {
       return new Promise((resolve) => {
@@ -52,6 +70,7 @@ export function createBaseQuery<
         }
       })
     },
+    { storage: createDeepSignal },
   )
 
   batch(() => {
